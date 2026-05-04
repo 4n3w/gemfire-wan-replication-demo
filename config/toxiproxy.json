@@ -1,0 +1,14 @@
+[
+  {
+    "name": "wan_locator",
+    "listen": "0.0.0.0:10335",
+    "upstream": "site-b-locator:10335",
+    "enabled": true
+  },
+  {
+    "name": "wan_receiver",
+    "listen": "0.0.0.0:5000",
+    "upstream": "site-b-server:5000",
+    "enabled": true
+  }
+]
