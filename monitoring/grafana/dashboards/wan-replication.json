@@ -195,7 +195,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "scalar(gemfire_cache_entries{site=\"site-a\", region=\"Orders\"}) - scalar(gemfire_cache_entries{site=\"site-b\", region=\"Orders\"})",
+          "expr": "clamp_min(gemfire_cache_entries{site=\"site-a\", region=\"Orders\"} - on(region) gemfire_cache_entries{site=\"site-b\", region=\"Orders\"}, 0)",
           "legendFormat": "Lag",
           "refId": "A"
         }
@@ -846,11 +846,12 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "scalar(gemfire_cache_entries{site=\"site-a\", region=\"Orders\"}) - scalar(gemfire_cache_entries{site=\"site-b\", region=\"Orders\"})",
+          "expr": "clamp_min(gemfire_cache_entries{site=\"site-a\", region=\"Orders\"} - on(region) gemfire_cache_entries{site=\"site-b\", region=\"Orders\"}, 0)",
           "legendFormat": "Entry Count Lag (A - B)",
           "refId": "A"
         }
-      ]
+      ],
+      "description": "Difference between Site A and Site B entry counts. Brief negative values are normal \u2014 caused by Prometheus scraping the two sites at slightly different times."
     },
     {
       "datasource": {
