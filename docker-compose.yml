@@ -56,7 +56,7 @@ services:
       - "8474:8474"
     volumes:
       - ./config/toxiproxy.json:/config/toxiproxy.json:ro
-    command: ["-host=0.0.0.0", "-config=/config/toxiproxy.json"]
+    command: ["-host=0.0.0.0", "-config=/config/toxiproxy.json", "-proxy-metrics", "-runtime-metrics"]
     depends_on:
       site-a-locator:
         condition: service_healthy
@@ -158,10 +158,13 @@ services:
       - site-a-net
     volumes:
       - ./scripts/data-generator.sh:/scripts/data-generator.sh:ro
+      - ./scripts/DataGenerator.java:/scripts/DataGenerator.java:ro
     entrypoint: ["bash", "/scripts/data-generator.sh"]
     environment:
       LOCATOR_HOST: site-a-locator
       LOCATOR_PORT: "10335"
+      HTTP_PORT: "8888"
+      AUTO_START: "true"
     depends_on:
       site-a-server:
         condition: service_healthy

@@ -4,270 +4,644 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GemFire WAN Replication Demo</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0f172a; color: #e2e8f0; padding: 24px; }
-  h1 { font-size: 1.5rem; margin-bottom: 8px; }
-  .subtitle { color: #94a3b8; margin-bottom: 24px; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
-  .card { background: #1e293b; border-radius: 8px; padding: 16px; border: 1px solid #334155; }
-  .card h2 { font-size: 1rem; margin-bottom: 12px; color: #94a3b8; }
-  .proxy-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #334155; }
-  .proxy-row:last-child { border-bottom: none; }
-  .proxy-name { font-weight: 600; }
-  .proxy-detail { font-size: 0.85rem; color: #64748b; }
-  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; }
-  .badge-green { background: #065f46; color: #6ee7b7; }
-  .badge-red { background: #7f1d1d; color: #fca5a5; }
-  .badge-yellow { background: #78350f; color: #fcd34d; }
-  .badge-gray { background: #374151; color: #9ca3af; }
-  .status-indicator { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 8px; }
-  .status-green { background: #22c55e; box-shadow: 0 0 8px #22c55e88; }
-  .status-red { background: #ef4444; box-shadow: 0 0 8px #ef444488; }
-  .status-yellow { background: #eab308; box-shadow: 0 0 8px #eab30888; }
-  .link-status { display: flex; align-items: center; font-size: 1.1rem; font-weight: 600; margin-bottom: 16px; }
-  .controls { display: flex; gap: 12px; flex-wrap: wrap; }
-  .btn { padding: 10px 20px; border: none; border-radius: 6px; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
-  .btn:hover { opacity: 0.85; }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .btn-red { background: #dc2626; color: white; }
-  .btn-green { background: #16a34a; color: white; }
-  .btn-yellow { background: #ca8a04; color: white; }
-  .btn-blue { background: #2563eb; color: white; }
-  .toxics-list { margin-top: 8px; }
-  .toxic-item { font-size: 0.85rem; padding: 4px 8px; background: #7f1d1d44; border-radius: 4px; margin: 4px 0; color: #fca5a5; }
-  .log { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 12px; max-height: 200px; overflow-y: auto; font-size: 0.8rem; font-family: monospace; margin-top: 8px; }
-  .log-entry { padding: 2px 0; }
-  .log-entry.error { color: #fca5a5; }
-  .log-entry.success { color: #6ee7b7; }
-  .log-entry.info { color: #93c5fd; }
+  @keyframes flowRight {
+    from { stroke-dashoffset: 12; }
+    to { stroke-dashoffset: 0; }
+  }
+  @keyframes pulseGlow {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+  }
+  @keyframes pulseDot {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.4); opacity: 0.5; }
+  }
+  .dot-pulse { animation: pulseDot 1.5s ease-in-out infinite; }
 </style>
 </head>
-<body>
+<body class="bg-slate-900 min-h-screen">
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
 
-<h1>GemFire WAN Replication Demo</h1>
-<p class="subtitle">Site A &rarr; Site B replication via Toxiproxy-controlled WAN link</p>
-
-<div class="link-status">
-  <span id="link-indicator" class="status-indicator status-green"></span>
-  <span id="link-text">WAN Link: Checking...</span>
-</div>
-
-<div class="grid">
-  <div class="card">
-    <h2>Proxy Status</h2>
-    <div id="proxy-status">Loading...</div>
-  </div>
-
-  <div class="card">
-    <h2>Active Toxics</h2>
-    <div id="active-toxics">Loading...</div>
-  </div>
-</div>
-
-<div class="card" style="margin-bottom: 24px;">
-  <h2>Controls</h2>
-  <div class="controls">
-    <button class="btn btn-red" id="btn-kill" onclick="killLink()">Kill WAN Link</button>
-    <button class="btn btn-green" id="btn-restore" onclick="restoreLink()">Restore WAN Link</button>
-    <button class="btn btn-yellow" id="btn-latency" onclick="addLatency()">Add Latency (2s)</button>
-    <button class="btn btn-blue" id="btn-rm-latency" onclick="removeLatency()">Remove Latency</button>
-  </div>
-</div>
-
-<div class="card">
-  <h2>Activity Log</h2>
-  <div id="log" class="log"></div>
-</div>
-
-<script>
-const PROXY_NAMES = ["wan_locator", "wan_receiver"];
 const API = "/toxiproxy";
-
-function log(msg, type = "info") {
-  const el = document.getElementById("log");
-  const entry = document.createElement("div");
-  entry.className = "log-entry " + type;
-  entry.textContent = "[" + new Date().toLocaleTimeString() + "] " + msg;
-  el.prepend(entry);
-  // Keep log size manageable
-  while (el.children.length > 100) el.removeChild(el.lastChild);
-}
+const PROXY_NAMES = ["wan_locator", "wan_receiver"];
 
 async function apiCall(method, path, body) {
   const opts = { method, headers: { "Content-Type": "application/json" } };
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(API + path, opts);
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(res.status + ": " + text);
-  }
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
   if (res.status === 204) return null;
   return res.json();
 }
 
-let lastProxyData = null;
+/* ── Icons ─────────────────────────────────────────────── */
 
-async function pollStatus() {
-  try {
-    const proxies = await apiCall("GET", "/proxies");
-    lastProxyData = proxies;
-    renderProxies(proxies);
-    await pollToxics();
-  } catch (e) {
-    document.getElementById("proxy-status").textContent = "Error: " + e.message;
-    setLinkStatus("red", "WAN Link: Unknown (API error)");
-  }
+function LocatorIcon(props) {
+  return (
+    <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" />
+      <circle cx="12" cy="10" r="3" />
+    </svg>
+  );
 }
 
-function renderProxies(proxies) {
-  const container = document.getElementById("proxy-status");
-  container.innerHTML = "";
-  for (const name of PROXY_NAMES) {
-    const p = proxies[name];
-    if (!p) {
-      container.innerHTML += '<div class="proxy-row"><span class="proxy-name">' + name + '</span><span class="badge badge-gray">NOT FOUND</span></div>';
-      continue;
-    }
-    const badge = p.enabled ? "badge-green" : "badge-red";
-    const label = p.enabled ? "ENABLED" : "DISABLED";
-    container.innerHTML +=
-      '<div class="proxy-row">' +
-        '<div><span class="proxy-name">' + name + '</span><br>' +
-        '<span class="proxy-detail">' + p.listen + ' &rarr; ' + p.upstream + '</span></div>' +
-        '<span class="badge ' + badge + '">' + label + '</span>' +
-      '</div>';
-  }
+function ServerIcon(props) {
+  return (
+    <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="2" width="20" height="8" rx="2" />
+      <rect x="2" y="14" width="20" height="8" rx="2" />
+      <line x1="6" y1="6" x2="6.01" y2="6" strokeWidth="2" />
+      <line x1="6" y1="18" x2="6.01" y2="18" strokeWidth="2" />
+    </svg>
+  );
 }
 
-async function pollToxics() {
-  const container = document.getElementById("active-toxics");
-  container.innerHTML = "";
-  let totalToxics = 0;
-  let hasLatency = false;
-
-  // Check if any proxy is disabled
-  let anyDisabled = false;
-  if (lastProxyData) {
-    for (const name of PROXY_NAMES) {
-      const p = lastProxyData[name];
-      if (p && !p.enabled) anyDisabled = true;
-    }
-  }
-
-  for (const name of PROXY_NAMES) {
-    try {
-      const toxics = await apiCall("GET", "/proxies/" + name + "/toxics");
-      if (toxics && toxics.length > 0) {
-        totalToxics += toxics.length;
-        for (const t of toxics) {
-          if (t.type === "latency") hasLatency = true;
-          container.innerHTML +=
-            '<div class="toxic-item">' + name + ': ' + t.name + ' (' + t.type + ') — ' + JSON.stringify(t.attributes) + '</div>';
-        }
-      }
-    } catch (e) {
-      container.innerHTML += '<div class="toxic-item">Error fetching toxics for ' + name + '</div>';
-    }
-  }
-
-  if (totalToxics === 0 && !anyDisabled) {
-    container.innerHTML = '<div style="color:#6ee7b7;">No active toxics — link is clean</div>';
-  } else if (totalToxics === 0 && anyDisabled) {
-    container.innerHTML = '<div style="color:#fca5a5;">No toxics, but proxy is disabled</div>';
-  }
-
-  // Update link status — proxy disabled takes priority
-  if (anyDisabled) {
-    setLinkStatus("red", "WAN Link: DOWN (proxy disabled)");
-  } else if (hasLatency) {
-    setLinkStatus("yellow", "WAN Link: DEGRADED (latency toxic active)");
-  } else {
-    setLinkStatus("green", "WAN Link: HEALTHY");
-  }
+function NetworkIcon(props) {
+  return (
+    <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="2" width="6" height="6" rx="1" />
+      <rect x="2" y="16" width="6" height="6" rx="1" />
+      <rect x="16" y="16" width="6" height="6" rx="1" />
+      <path d="M12 8v4m0 0l-7 4m7-4l7 4" />
+    </svg>
+  );
 }
 
-function setLinkStatus(color, text) {
-  const indicator = document.getElementById("link-indicator");
-  const label = document.getElementById("link-text");
-  indicator.className = "status-indicator status-" + color;
-  label.textContent = text;
+/* ── Animated Connection Arrow ─────────────────────────── */
+
+function WanArrow({ status, id }) {
+  const isDown = status === "down";
+  const isDegraded = status === "degraded";
+  const isHealthy = status === "healthy";
+
+  const color = isDown ? "#ef4444"
+    : isDegraded ? "#eab308"
+    : isHealthy ? "#22c55e"
+    : "#475569";
+
+  const speed = isDown ? 0 : isDegraded ? 2.5 : 0.5;
+  const markerId = "ah-" + id;
+
+  return (
+    <div className="flex flex-col items-center justify-center shrink-0 px-1">
+      <svg width="90" height="28" style={{ overflow: "visible" }}>
+        <defs>
+          <marker id={markerId} viewBox="0 0 10 10" refX="8" refY="5"
+            markerWidth="5" markerHeight="5" orient="auto">
+            <path d="M0 0 L10 5 L0 10z" fill={color} />
+          </marker>
+        </defs>
+        <line x1="2" y1="14" x2="80" y2="14"
+          stroke={color} strokeWidth="2.5" strokeLinecap="round"
+          strokeDasharray={isDown ? "3 7" : "6 6"}
+          markerEnd={"url(#" + markerId + ")"}
+          style={speed ? { animation: "flowRight " + speed + "s linear infinite" } : undefined}
+        />
+        {isDown && (
+          <g>
+            <line x1="38" y1="6" x2="52" y2="22" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round" />
+            <line x1="52" y1="6" x2="38" y2="22" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round" />
+          </g>
+        )}
+      </svg>
+      <span className="text-slate-600 mt-0.5" style={{ fontSize: "9px", letterSpacing: "0.05em" }}>
+        {isDown ? "DISCONNECTED" : isDegraded ? "DEGRADED" : isHealthy ? "REPLICATING" : ""}
+      </span>
+    </div>
+  );
 }
 
-function setButtonsDisabled(disabled) {
-  document.querySelectorAll(".btn").forEach(b => b.disabled = disabled);
+/* ── Node Card ─────────────────────────────────────────── */
+
+function NodeCard({ icon, name, sub, detail, status }) {
+  const Icon = icon === "locator" ? LocatorIcon
+    : icon === "server" ? ServerIcon
+    : NetworkIcon;
+
+  const borderColor = status === "healthy" ? "rgba(16,185,129,0.4)"
+    : status === "down" ? "rgba(239,68,68,0.4)"
+    : status === "degraded" ? "rgba(234,179,8,0.4)"
+    : "rgba(71,85,105,0.5)";
+
+  const glowColor = status === "healthy" ? "0 0 20px rgba(16,185,129,0.12)"
+    : status === "down" ? "0 0 20px rgba(239,68,68,0.12)"
+    : status === "degraded" ? "0 0 20px rgba(234,179,8,0.12)"
+    : "none";
+
+  const dotColor = status === "healthy" ? "#22c55e"
+    : status === "down" ? "#ef4444"
+    : status === "degraded" ? "#eab308"
+    : "#64748b";
+
+  return (
+    <div className="bg-slate-800 rounded-lg px-3 py-2.5"
+      style={{ border: "1px solid " + borderColor, boxShadow: glowColor,
+               transition: "all 0.5s ease", minWidth: "140px" }}>
+      <div className="flex items-center gap-2">
+        <span className={status === "down" ? "dot-pulse" : ""}
+          style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: dotColor,
+                   display: "inline-block", flexShrink: 0 }} />
+        <Icon className="shrink-0" style={{ width: 15, height: 15, color: "#94a3b8" }} />
+        <span className="text-sm font-semibold text-slate-200" style={{ whiteSpace: "nowrap" }}>
+          {name}
+        </span>
+      </div>
+      {sub && <div className="text-xs text-slate-400 mt-0.5" style={{ paddingLeft: 24 }}>{sub}</div>}
+      {detail && <div className="text-slate-500 mt-0.5" style={{ fontSize: 10, paddingLeft: 24 }}>{detail}</div>}
+    </div>
+  );
 }
 
-async function killLink() {
-  setButtonsDisabled(true);
-  log("Killing WAN link...", "error");
-  try {
-    for (const name of PROXY_NAMES) {
-      await apiCall("POST", "/proxies/" + name, { enabled: false });
-    }
-    log("WAN link killed — both proxies disabled", "error");
-  } catch (e) {
-    log("Error killing link: " + e.message, "error");
-  }
-  setButtonsDisabled(false);
-  pollStatus();
+/* ── Site Cluster ──────────────────────────────────────── */
+
+function SiteCluster({ site, children }) {
+  var isA = site === "A";
+  var borderColor = isA ? "rgba(56,189,248,0.2)" : "rgba(139,92,246,0.2)";
+  var bgColor = isA ? "rgba(12,74,110,0.12)" : "rgba(76,29,149,0.12)";
+  var labelColor = isA ? "#38bdf8" : "#a78bfa";
+
+  return (
+    <div className="rounded-xl p-4"
+      style={{ border: "1px solid " + borderColor, background: bgColor }}>
+      <div className="text-center mb-3" style={{ fontSize: 11, fontWeight: 700,
+           color: labelColor, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+        {"Site " + site}
+        <span className="font-normal" style={{ color: "#64748b",
+              textTransform: "none", letterSpacing: "normal", marginLeft: 6, fontSize: 10 }}>
+          {"DS-ID: " + (isA ? "1" : "2")}
+        </span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {children}
+      </div>
+    </div>
+  );
 }
 
-async function restoreLink() {
-  setButtonsDisabled(true);
-  log("Restoring WAN link...", "success");
-  try {
-    for (const name of PROXY_NAMES) {
-      await apiCall("POST", "/proxies/" + name, { enabled: true });
-    }
-    log("WAN link restored — both proxies enabled", "success");
-  } catch (e) {
-    log("Error restoring link: " + e.message, "error");
-  }
-  setButtonsDisabled(false);
-  pollStatus();
+/* ── Status Badge ──────────────────────────────────────── */
+
+function StatusBadge({ status }) {
+  var cfg = status === "healthy"
+    ? { bg: "rgba(6,78,59,0.5)", text: "#6ee7b7", border: "rgba(6,95,70,0.8)", label: "HEALTHY" }
+    : status === "down"
+    ? { bg: "rgba(127,29,29,0.5)", text: "#fca5a5", border: "rgba(153,27,27,0.8)", label: "DOWN" }
+    : status === "degraded"
+    ? { bg: "rgba(120,53,15,0.5)", text: "#fcd34d", border: "rgba(146,64,14,0.8)", label: "DEGRADED" }
+    : { bg: "rgba(30,41,59,0.8)", text: "#94a3b8", border: "rgba(51,65,85,0.8)", label: "CHECKING..." };
+
+  var dotColor = status === "healthy" ? "#22c55e"
+    : status === "down" ? "#ef4444"
+    : status === "degraded" ? "#eab308" : "#94a3b8";
+
+  return (
+    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold"
+      style={{ background: cfg.bg, color: cfg.text, border: "1px solid " + cfg.border }}>
+      <span className={status === "down" ? "dot-pulse" : ""}
+        style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: dotColor, display: "inline-block" }} />
+      {"WAN Link: " + cfg.label}
+    </span>
+  );
 }
 
-async function addLatency() {
-  setButtonsDisabled(true);
-  log("Adding 2s latency...", "info");
-  try {
-    for (const name of PROXY_NAMES) {
-      await apiCall("POST", "/proxies/" + name + "/toxics", {
-        name: "latency_" + name,
-        type: "latency",
-        attributes: { latency: 2000, jitter: 500 }
+/* ── Control Button ────────────────────────────────────── */
+
+function Btn({ onClick, disabled, color, children }) {
+  var bg = color === "red" ? "#dc2626"
+    : color === "green" ? "#16a34a"
+    : color === "yellow" ? "#ca8a04"
+    : color === "orange" ? "#ea580c"
+    : "#2563eb";
+  var hoverBg = color === "red" ? "#b91c1c"
+    : color === "green" ? "#15803d"
+    : color === "yellow" ? "#a16207"
+    : color === "orange" ? "#c2410c"
+    : "#1d4ed8";
+
+  return (
+    <button onClick={onClick} disabled={disabled}
+      className="text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition-all"
+      style={{ background: bg, opacity: disabled ? 0.3 : 1,
+               cursor: disabled ? "not-allowed" : "pointer" }}
+      onMouseOver={function(e) { if (!disabled) e.currentTarget.style.background = hoverBg; }}
+      onMouseOut={function(e) { e.currentTarget.style.background = bg; }}>
+      {children}
+    </button>
+  );
+}
+
+/* ── Main App ──────────────────────────────────────────── */
+
+function App() {
+  var _s = useState("unknown");   var wanStatus = _s[0]; var setWanStatus = _s[1];
+  var _p = useState(null);        var proxyData = _p[0]; var setProxyData = _p[1];
+  var _t = useState({});           var toxicsData = _t[0]; var setToxicsData = _t[1];
+  var _l = useState([]);           var logs = _l[0]; var setLogs = _l[1];
+  var _b = useState(false);        var busy = _b[0]; var setBusy = _b[1];
+  var _g = useState(null);         var genStatus = _g[0]; var setGenStatus = _g[1];
+
+  var addLog = useCallback(function(msg, type) {
+    type = type || "info";
+    setLogs(function(prev) {
+      return [{ time: new Date().toLocaleTimeString(), msg: msg, type: type,
+                id: Date.now() + Math.random() }].concat(prev).slice(0, 80);
+    });
+  }, []);
+
+  var pollStatus = useCallback(function() {
+    apiCall("GET", "/proxies").then(function(proxies) {
+      setProxyData(proxies);
+      var anyDisabled = false;
+      var hasToxic = false;
+      var toxics = {};
+      var promises = PROXY_NAMES.map(function(name) {
+        var p = proxies[name];
+        if (p && !p.enabled) anyDisabled = true;
+        return apiCall("GET", "/proxies/" + name + "/toxics").then(function(t) {
+          toxics[name] = t || [];
+          if (t && t.length > 0) hasToxic = true;
+        }).catch(function() { toxics[name] = []; });
       });
-    }
-    log("Latency toxic added (2000ms +/- 500ms jitter)", "info");
-  } catch (e) {
-    log("Error adding latency: " + e.message, "error");
+      Promise.all(promises).then(function() {
+        setToxicsData(toxics);
+        if (anyDisabled) setWanStatus("down");
+        else if (hasToxic) setWanStatus("degraded");
+        else setWanStatus("healthy");
+      });
+    }).catch(function() {
+      setWanStatus("unknown");
+    });
+  }, []);
+
+  var pollGenStatus = useCallback(function() {
+    fetch("/data-gen/status").then(function(r) { return r.json(); })
+      .then(function(d) { setGenStatus(d); })
+      .catch(function() { setGenStatus(null); });
+  }, []);
+
+  useEffect(function() {
+    pollStatus();
+    pollGenStatus();
+    var interval = setInterval(function() { pollStatus(); pollGenStatus(); }, 3000);
+    return function() { clearInterval(interval); };
+  }, [pollStatus, pollGenStatus]);
+
+  function doAction(action) {
+    setBusy(true);
+    action().catch(function(e) {
+      addLog("Error: " + e.message, "error");
+    }).finally(function() {
+      setBusy(false);
+      pollStatus();
+    });
   }
-  setButtonsDisabled(false);
-  pollStatus();
+
+  function killLink() {
+    doAction(function() {
+      addLog("Killing WAN link...", "error");
+      return Promise.all(PROXY_NAMES.map(function(name) {
+        return apiCall("POST", "/proxies/" + name, { enabled: false });
+      })).then(function() {
+        addLog("WAN link killed \u2014 both proxies disabled", "error");
+      });
+    });
+  }
+
+  function restoreLink() {
+    doAction(function() {
+      addLog("Restoring WAN link...", "success");
+      return Promise.all(PROXY_NAMES.map(function(name) {
+        return apiCall("POST", "/proxies/" + name, { enabled: true });
+      })).then(function() {
+        addLog("WAN link restored \u2014 both proxies enabled", "success");
+      });
+    });
+  }
+
+  function addLatencyAction(ms) {
+    var jitter = Math.round(ms * 0.25);
+    doAction(function() {
+      addLog("Setting latency to " + (ms / 1000) + "s...", "info");
+      /* Remove any existing latency toxic first, then add the new one */
+      return Promise.all(PROXY_NAMES.map(function(name) {
+        return apiCall("DELETE", "/proxies/" + name + "/toxics/latency_" + name).catch(function() {});
+      })).then(function() {
+        return Promise.all(PROXY_NAMES.map(function(name) {
+          return apiCall("POST", "/proxies/" + name + "/toxics", {
+            name: "latency_" + name, type: "latency",
+            attributes: { latency: ms, jitter: jitter }
+          });
+        }));
+      }).then(function() {
+        addLog("Latency set (" + ms + "ms \u00b1 " + jitter + "ms jitter)", "info");
+      });
+    });
+  }
+
+  function removeLatencyAction() {
+    doAction(function() {
+      addLog("Removing latency...", "success");
+      return Promise.all(PROXY_NAMES.map(function(name) {
+        return apiCall("DELETE", "/proxies/" + name + "/toxics/latency_" + name).catch(function() {});
+      })).then(function() {
+        addLog("Latency removed", "success");
+      });
+    });
+  }
+
+  function addBandwidthAction(kbps) {
+    doAction(function() {
+      addLog("Throttling to " + kbps + " KB/s...", "info");
+      /* Remove existing bandwidth toxic first, then add new one */
+      return Promise.all(PROXY_NAMES.map(function(name) {
+        return apiCall("DELETE", "/proxies/" + name + "/toxics/bw_" + name).catch(function() {});
+      })).then(function() {
+        return Promise.all(PROXY_NAMES.map(function(name) {
+          return apiCall("POST", "/proxies/" + name + "/toxics", {
+            name: "bw_" + name, type: "bandwidth",
+            attributes: { rate: kbps }
+          });
+        }));
+      }).then(function() {
+        addLog("Bandwidth limited to " + kbps + " KB/s", "info");
+      });
+    });
+  }
+
+  function removeBandwidthAction() {
+    doAction(function() {
+      addLog("Removing bandwidth limit...", "success");
+      return Promise.all(PROXY_NAMES.map(function(name) {
+        return apiCall("DELETE", "/proxies/" + name + "/toxics/bw_" + name).catch(function() {});
+      })).then(function() {
+        addLog("Bandwidth limit removed", "success");
+      });
+    });
+  }
+
+  function genAction(endpoint) {
+    fetch("/data-gen/" + endpoint).then(function(r) { return r.json(); })
+      .then(function(d) { setGenStatus(d); pollGenStatus(); })
+      .catch(function(e) { addLog("Data gen error: " + e.message, "error"); });
+  }
+
+  function setGenRate(ms) {
+    var label = ms >= 1000 ? (ms / 1000) + "/sec" : Math.round(1000 / ms) + "/sec";
+    addLog("Data generator rate: " + label, "info");
+    fetch("/data-gen/rate?ms=" + ms).then(function(r) { return r.json(); })
+      .then(function(d) { setGenStatus(d); pollGenStatus(); })
+      .catch(function(e) { addLog("Data gen error: " + e.message, "error"); });
+  }
+
+  /* Determine node statuses */
+  var proxyNodeStatus = wanStatus === "unknown" ? "neutral" : wanStatus;
+
+  /* Compute all toxics for display */
+  var allToxics = [];
+  var toxicTypes = {};
+  Object.keys(toxicsData).forEach(function(proxy) {
+    (toxicsData[proxy] || []).forEach(function(t) {
+      allToxics.push({ proxy: proxy, name: t.name, type: t.type, attributes: t.attributes });
+      toxicTypes[t.type] = true;
+    });
+  });
+
+  /* Build toxiproxy detail label */
+  var toxicDetail = wanStatus === "down" ? "DISABLED" : "PASS-THROUGH";
+  if (wanStatus !== "down" && allToxics.length > 0) {
+    var parts = [];
+    if (toxicTypes.latency) parts.push("LATENCY");
+    if (toxicTypes.bandwidth) parts.push("THROTTLED");
+    Object.keys(toxicTypes).forEach(function(t) {
+      if (t !== "latency" && t !== "bandwidth") parts.push(t.toUpperCase());
+    });
+    toxicDetail = parts.join(" + ");
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 py-6 text-slate-200">
+
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-white">GemFire WAN Replication</h1>
+          <p className="text-sm text-slate-400 mt-1">
+            Site A &rarr; Site B replication via Toxiproxy-controlled WAN link
+          </p>
+        </div>
+        <StatusBadge status={wanStatus} />
+      </div>
+
+      {/* Topology Diagram */}
+      <div className="rounded-2xl p-6 mb-6 overflow-x-auto"
+        style={{ background: "rgba(30,41,59,0.4)", border: "1px solid rgba(51,65,85,0.6)" }}>
+        <div className="flex items-center justify-center gap-3" style={{ minWidth: 700 }}>
+
+          {/* Site A */}
+          <SiteCluster site="A">
+            <NodeCard icon="locator" name="Locator" sub="site-a-locator" detail="Port 10335" status="healthy" />
+            <NodeCard icon="server" name="Server" sub="site-a-server" detail="Gateway Sender" status="healthy" />
+          </SiteCluster>
+
+          {/* Arrow: Site A -> Toxiproxy */}
+          <WanArrow status={wanStatus === "unknown" ? "neutral" : wanStatus} id="a-to-toxi" />
+
+          {/* Toxiproxy */}
+          <NodeCard icon="network" name="Toxiproxy" sub="WAN Proxy"
+            detail={toxicDetail}
+            status={proxyNodeStatus} />
+
+          {/* Arrow: Toxiproxy -> Site B */}
+          <WanArrow status={wanStatus === "unknown" ? "neutral" : wanStatus} id="toxi-to-b" />
+
+          {/* Site B */}
+          <SiteCluster site="B">
+            <NodeCard icon="server" name="Server" sub="site-b-server" detail="Gateway Receiver"
+              status={wanStatus === "down" ? "down" : "healthy"} />
+            <NodeCard icon="locator" name="Locator" sub="site-b-locator" detail="Port 10335"
+              status={wanStatus === "down" ? "neutral" : "healthy"} />
+          </SiteCluster>
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div className="rounded-xl p-4 mb-6"
+        style={{ background: "rgba(30,41,59,0.4)", border: "1px solid rgba(51,65,85,0.6)" }}>
+        <div className="text-xs font-bold uppercase tracking-wider mb-4" style={{ color: "#64748b" }}>
+          Controls
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div>
+            <div className="text-xs mb-2" style={{ color: "#475569" }}>WAN Link</div>
+            <div className="flex gap-2 flex-wrap">
+              <Btn onClick={killLink} disabled={busy} color="red">Kill Link</Btn>
+              <Btn onClick={restoreLink} disabled={busy} color="green">Restore Link</Btn>
+            </div>
+          </div>
+          <div>
+            <div className="text-xs mb-2" style={{ color: "#475569" }}>Network Impairments</div>
+            <div className="flex gap-2 flex-wrap items-center">
+              <span className="text-xs" style={{ color: "#64748b" }}>Latency:</span>
+              <Btn onClick={function() { addLatencyAction(2000); }} disabled={busy} color="yellow">2s</Btn>
+              <Btn onClick={function() { addLatencyAction(5000); }} disabled={busy} color="yellow">5s</Btn>
+              <Btn onClick={function() { addLatencyAction(10000); }} disabled={busy} color="yellow">10s</Btn>
+              <Btn onClick={function() { addLatencyAction(30000); }} disabled={busy} color="yellow">30s</Btn>
+              <Btn onClick={removeLatencyAction} disabled={busy} color="blue">Remove</Btn>
+              <span style={{ width: 1, height: 28, background: "rgba(51,65,85,0.6)", margin: "0 4px" }} />
+              <span className="text-xs" style={{ color: "#64748b" }}>Throttle:</span>
+              <Btn onClick={function() { addBandwidthAction(100); }} disabled={busy} color="orange">100 KB/s</Btn>
+              <Btn onClick={function() { addBandwidthAction(10); }} disabled={busy} color="orange">10 KB/s</Btn>
+              <Btn onClick={function() { addBandwidthAction(1); }} disabled={busy} color="orange">1 KB/s</Btn>
+              <Btn onClick={removeBandwidthAction} disabled={busy} color="blue">Remove</Btn>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Data Generator */}
+      <div className="rounded-xl p-4 mb-6"
+        style={{ background: "rgba(30,41,59,0.4)", border: "1px solid rgba(51,65,85,0.6)" }}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-xs font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
+            Data Generator
+          </div>
+          {genStatus && (
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-mono" style={{ color: "#94a3b8" }}>
+                {genStatus.counter + " entries"}
+              </span>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                style={genStatus.running
+                  ? { background: "rgba(6,78,59,0.4)", color: "#6ee7b7", border: "1px solid rgba(6,95,70,0.6)" }
+                  : { background: "rgba(127,29,29,0.4)", color: "#fca5a5", border: "1px solid rgba(153,27,27,0.6)" }}>
+                {genStatus.running ? "RUNNING" : "STOPPED"}
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="flex gap-2 flex-wrap items-center">
+          <Btn onClick={function() { genAction("start"); addLog("Data generator started", "success"); }}
+            disabled={genStatus && genStatus.running} color="green">Start</Btn>
+          <Btn onClick={function() { genAction("stop"); addLog("Data generator stopped", "error"); }}
+            disabled={!genStatus || !genStatus.running} color="red">Stop</Btn>
+          <span style={{ width: 1, height: 28, background: "rgba(51,65,85,0.6)", margin: "0 4px" }} />
+          <span className="text-xs" style={{ color: "#64748b" }}>Rate:</span>
+          <Btn onClick={function() { setGenRate(1000); }} color="blue">1/sec</Btn>
+          <Btn onClick={function() { setGenRate(200); }} color="blue">5/sec</Btn>
+          <Btn onClick={function() { setGenRate(100); }} color="blue">10/sec</Btn>
+          <Btn onClick={function() { setGenRate(67); }} color="blue">15/sec</Btn>
+          <Btn onClick={function() { setGenRate(50); }} color="blue">20/sec</Btn>
+          <Btn onClick={function() { setGenRate(20); }} color="blue">50/sec</Btn>
+        </div>
+      </div>
+
+      {/* Details Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+
+        {/* Proxy Details */}
+        <div className="rounded-xl p-4"
+          style={{ background: "rgba(30,41,59,0.4)", border: "1px solid rgba(51,65,85,0.6)" }}>
+          <div className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: "#64748b" }}>
+            Proxy Status
+          </div>
+          {proxyData ? PROXY_NAMES.map(function(name) {
+            var p = proxyData[name];
+            if (!p) return (
+              <div key={name} className="flex justify-between items-center py-2"
+                style={{ borderBottom: "1px solid rgba(51,65,85,0.4)" }}>
+                <span className="text-sm font-mono">{name}</span>
+                <span className="text-xs px-2 py-0.5 rounded"
+                  style={{ background: "#374151", color: "#9ca3af" }}>NOT FOUND</span>
+              </div>
+            );
+            return (
+              <div key={name} className="flex justify-between items-center py-2"
+                style={{ borderBottom: "1px solid rgba(51,65,85,0.4)" }}>
+                <div>
+                  <span className="text-sm font-mono font-semibold">{name}</span>
+                  <div className="text-xs" style={{ color: "#64748b" }}>
+                    {p.listen + " \u2192 " + p.upstream}
+                  </div>
+                </div>
+                <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold"
+                  style={p.enabled
+                    ? { background: "rgba(6,78,59,0.4)", color: "#6ee7b7", border: "1px solid rgba(6,95,70,0.6)" }
+                    : { background: "rgba(127,29,29,0.4)", color: "#fca5a5", border: "1px solid rgba(153,27,27,0.6)" }}>
+                  {p.enabled ? "ENABLED" : "DISABLED"}
+                </span>
+              </div>
+            );
+          }) : <div className="text-sm" style={{ color: "#64748b" }}>Loading...</div>}
+        </div>
+
+        {/* Active Toxics */}
+        <div className="rounded-xl p-4"
+          style={{ background: "rgba(30,41,59,0.4)", border: "1px solid rgba(51,65,85,0.6)" }}>
+          <div className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: "#64748b" }}>
+            Active Toxics
+          </div>
+          {allToxics.length > 0 ? allToxics.map(function(t, i) {
+            return (
+              <div key={i} className="text-xs font-mono rounded px-3 py-2 mb-2"
+                style={{ background: "rgba(127,29,29,0.15)", border: "1px solid rgba(153,27,27,0.25)" }}>
+                <span style={{ color: "#fca5a5" }}>{t.proxy}</span>
+                <span style={{ color: "#64748b" }}>{" \u2192 "}</span>
+                <span style={{ color: "#fcd34d" }}>{t.name}</span>
+                <span style={{ color: "#64748b" }}>{" (" + t.type + ")"}</span>
+                <div style={{ color: "#94a3b8", marginTop: 4 }}>{JSON.stringify(t.attributes)}</div>
+              </div>
+            );
+          }) : (
+            <div className="text-sm" style={{ color: wanStatus === "down" ? "#fca5a5" : "#6ee7b7", opacity: 0.7 }}>
+              {wanStatus === "down" ? "No toxics \u2014 proxy is disabled" : "No active toxics \u2014 link is clean"}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Activity Log */}
+      <div className="rounded-xl p-4"
+        style={{ background: "rgba(30,41,59,0.4)", border: "1px solid rgba(51,65,85,0.6)" }}>
+        <div className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: "#64748b" }}>
+          Activity Log
+        </div>
+        <div className="font-mono text-xs overflow-y-auto" style={{ maxHeight: 180 }}>
+          {logs.length === 0 ? (
+            <div style={{ color: "#64748b" }}>No activity yet</div>
+          ) : logs.map(function(entry) {
+            var c = entry.type === "error" ? "#fca5a5"
+              : entry.type === "success" ? "#6ee7b7" : "#93c5fd";
+            return (
+              <div key={entry.id} style={{ color: c, padding: "2px 0" }}>
+                <span style={{ color: "#64748b" }}>{"[" + entry.time + "]"}</span>{" " + entry.msg}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="text-center text-xs mt-6" style={{ color: "#475569" }}>
+        <a href="http://localhost:3000" target="_blank" className="hover:underline"
+          style={{ color: "#38bdf8" }}>Grafana Dashboard</a>
+        <span className="mx-2">&middot;</span>
+        <a href="http://localhost:9090" target="_blank" className="hover:underline"
+          style={{ color: "#38bdf8" }}>Prometheus</a>
+      </div>
+    </div>
+  );
 }
 
-async function removeLatency() {
-  setButtonsDisabled(true);
-  log("Removing latency...", "success");
-  try {
-    for (const name of PROXY_NAMES) {
-      try {
-        await apiCall("DELETE", "/proxies/" + name + "/toxics/latency_" + name);
-      } catch (e) { /* toxic may not exist */ }
-    }
-    log("Latency toxics removed", "success");
-  } catch (e) {
-    log("Error removing latency: " + e.message, "error");
-  }
-  setButtonsDisabled(false);
-  pollStatus();
-}
-
-// Poll every 3 seconds
-pollStatus();
-setInterval(pollStatus, 3000);
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
 </script>
-
 </body>
 </html>
