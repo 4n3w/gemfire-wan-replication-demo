@@ -81,6 +81,7 @@ services:
     volumes:
       - ./scripts/start-server.sh:/scripts/start-server.sh:ro
       - ./config/site-a-cache.xml:/config/cache.xml:ro
+      - ./data/site-a:/data
     entrypoint: ["bash", "/scripts/start-server.sh"]
     environment:
       SERVER_NAME: site-a-server
@@ -111,9 +112,12 @@ services:
     ports:
       - "28080:8080"   # GemFire REST / built-in metrics (debug)
     volumes:
-      - ./scripts/start-server.sh:/scripts/start-server.sh:ro
+      - ./scripts/start-site-b-server.sh:/scripts/start-site-b-server.sh:ro
+      - ./scripts/PoisonPillCacheWriter.java:/scripts/poison-pill/PoisonPillCacheWriter.java:ro
+      - ./scripts/TogglePoisonPillFunction.java:/scripts/poison-pill/TogglePoisonPillFunction.java:ro
       - ./config/site-b-cache.xml:/config/cache.xml:ro
-    entrypoint: ["bash", "/scripts/start-server.sh"]
+      - ./data/site-b:/data
+    entrypoint: ["bash", "/scripts/start-site-b-server.sh"]
     environment:
       SERVER_NAME: site-b-server
       LOCATOR_HOST: site-b-locator
@@ -132,6 +136,26 @@ services:
       timeout: 5s
       retries: 30
       start_period: 20s
+
+  # ── Poison Pill Controller ──────────────────────────────────────
+  poison-pill-controller:
+    image: gemfire/gemfire:10.2.1-jdk17
+    container_name: poison-pill-controller
+    hostname: poison-pill-controller
+    networks:
+      - site-a-net
+      - site-b-net
+    volumes:
+      - ./scripts/poison-pill-controller.sh:/scripts/poison-pill-controller.sh:ro
+      - ./scripts/PoisonPillController.java:/scripts/PoisonPillController.java:ro
+    entrypoint: ["bash", "/scripts/poison-pill-controller.sh"]
+    environment:
+      LOCATOR_HOST: site-b-locator
+      LOCATOR_PORT: "10335"
+      HTTP_PORT: "8889"
+    depends_on:
+      site-b-server:
+        condition: service_healthy
 
   # ── Control App (browser UI) ────────────────────────────────────
   control-app:

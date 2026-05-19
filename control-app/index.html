@@ -248,6 +248,8 @@ function App() {
   var _l = useState([]);           var logs = _l[0]; var setLogs = _l[1];
   var _b = useState(false);        var busy = _b[0]; var setBusy = _b[1];
   var _g = useState(null);         var genStatus = _g[0]; var setGenStatus = _g[1];
+  var _pp = useState(null);        var ppStatus = _pp[0]; var setPpStatus = _pp[1];
+  var _dlq = useState(null);       var dlqData = _dlq[0]; var setDlqData = _dlq[1];
 
   var addLog = useCallback(function(msg, type) {
     type = type || "info";
@@ -288,12 +290,26 @@ function App() {
       .catch(function() { setGenStatus(null); });
   }, []);
 
+  var pollPpStatus = useCallback(function() {
+    fetch("/poison-pill/status").then(function(r) { return r.json(); })
+      .then(function(d) { setPpStatus(d); })
+      .catch(function() { setPpStatus(null); });
+  }, []);
+
+  var pollDlq = useCallback(function() {
+    fetch("/data-gen/dlq").then(function(r) { return r.json(); })
+      .then(function(d) { setDlqData(d); })
+      .catch(function() { setDlqData(null); });
+  }, []);
+
   useEffect(function() {
     pollStatus();
     pollGenStatus();
-    var interval = setInterval(function() { pollStatus(); pollGenStatus(); }, 3000);
+    pollPpStatus();
+    pollDlq();
+    var interval = setInterval(function() { pollStatus(); pollGenStatus(); pollPpStatus(); pollDlq(); }, 3000);
     return function() { clearInterval(interval); };
-  }, [pollStatus, pollGenStatus]);
+  }, [pollStatus, pollGenStatus, pollPpStatus, pollDlq]);
 
   function doAction(action) {
     setBusy(true);
@@ -388,6 +404,20 @@ function App() {
     });
   }
 
+  function enablePoisonPill() {
+    addLog("Enabling poison pill on Site B...", "error");
+    fetch("/poison-pill/enable").then(function(r) { return r.json(); })
+      .then(function(d) { setPpStatus(d); addLog("Poison pill ENABLED - Widget-5 orders will be rejected", "error"); })
+      .catch(function(e) { addLog("Poison pill error: " + e.message, "error"); });
+  }
+
+  function disablePoisonPill() {
+    addLog("Disabling poison pill on Site B...", "success");
+    fetch("/poison-pill/disable").then(function(r) { return r.json(); })
+      .then(function(d) { setPpStatus(d); addLog("Poison pill DISABLED - all orders accepted", "success"); })
+      .catch(function(e) { addLog("Poison pill error: " + e.message, "error"); });
+  }
+
   function genAction(endpoint) {
     fetch("/data-gen/" + endpoint).then(function(r) { return r.json(); })
       .then(function(d) { setGenStatus(d); pollGenStatus(); })
@@ -400,6 +430,13 @@ function App() {
     fetch("/data-gen/rate?ms=" + ms).then(function(r) { return r.json(); })
       .then(function(d) { setGenStatus(d); pollGenStatus(); })
       .catch(function(e) { addLog("Data gen error: " + e.message, "error"); });
+  }
+
+  function clearDlq() {
+    addLog("Clearing DLQ...", "info");
+    fetch("/data-gen/dlq/clear").then(function(r) { return r.json(); })
+      .then(function(d) { addLog("DLQ cleared (" + d.cleared + " entries removed)", "success"); pollDlq(); })
+      .catch(function(e) { addLog("DLQ clear error: " + e.message, "error"); });
   }
 
   /* Determine node statuses */
@@ -542,6 +579,80 @@ function App() {
           <Btn onClick={function() { setGenRate(50); }} color="blue">20/sec</Btn>
           <Btn onClick={function() { setGenRate(20); }} color="blue">50/sec</Btn>
         </div>
+      </div>
+
+      {/* Poison Pill (Site B) */}
+      <div className="rounded-xl p-4 mb-6"
+        style={{ background: "rgba(30,41,59,0.4)", border: "1px solid rgba(51,65,85,0.6)" }}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-xs font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
+            Poison Pill (Site B)
+          </div>
+          {ppStatus && (
+            <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+              style={ppStatus.poisonPill
+                ? { background: "rgba(127,29,29,0.4)", color: "#fca5a5", border: "1px solid rgba(153,27,27,0.6)" }
+                : { background: "rgba(6,78,59,0.4)", color: "#6ee7b7", border: "1px solid rgba(6,95,70,0.6)" }}>
+              {ppStatus.poisonPill ? "ACTIVE" : "INACTIVE"}
+            </span>
+          )}
+        </div>
+        <p className="text-xs mb-3" style={{ color: "#94a3b8" }}>
+          When active, Site B rejects ~20% of orders (Widget-5) causing them to land in the DLQ on Site A.
+        </p>
+        <div className="flex gap-2 flex-wrap">
+          <Btn onClick={enablePoisonPill} disabled={ppStatus && ppStatus.poisonPill} color="red">Enable Poison Pill</Btn>
+          <Btn onClick={disablePoisonPill} disabled={!ppStatus || !ppStatus.poisonPill} color="green">Disable Poison Pill</Btn>
+        </div>
+      </div>
+
+      {/* Dead Letter Queue */}
+      <div className="rounded-xl p-4 mb-6"
+        style={{ background: "rgba(30,41,59,0.4)", border: "1px solid rgba(51,65,85,0.6)" }}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className="text-xs font-bold uppercase tracking-wider" style={{ color: "#64748b" }}>
+              Dead Letter Queue (Site A)
+            </div>
+            {dlqData && (
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                style={dlqData.count > 0
+                  ? { background: "rgba(127,29,29,0.4)", color: "#fca5a5", border: "1px solid rgba(153,27,27,0.6)" }
+                  : { background: "rgba(6,78,59,0.4)", color: "#6ee7b7", border: "1px solid rgba(6,95,70,0.6)" }}>
+                {dlqData.count + (dlqData.count === 1 ? " entry" : " entries")}
+              </span>
+            )}
+          </div>
+          <Btn onClick={clearDlq} disabled={!dlqData || dlqData.count === 0} color="red">Clear DLQ</Btn>
+        </div>
+        {dlqData && dlqData.count > 0 ? (
+          <div className="font-mono text-xs overflow-y-auto" style={{ maxHeight: 200 }}>
+            {dlqData.entries.map(function(entry, idx) {
+              var orderKey = entry.key || "";
+              var product = "";
+              var failedTime = entry.failedTime || "";
+              var exception = entry.exception || "";
+              if (entry.value && typeof entry.value === "object") {
+                product = entry.value.product || "";
+                if (!orderKey) orderKey = entry.value.id || "";
+              }
+              return (
+                <div key={orderKey + "-" + idx} className="flex items-center gap-3 py-1"
+                  style={{ borderBottom: "1px solid rgba(51,65,85,0.3)" }}>
+                  <span style={{ color: "#fca5a5", minWidth: 100 }}>{orderKey}</span>
+                  {product && <span style={{ color: "#fcd34d" }}>{product}</span>}
+                  {exception && <span className="truncate" style={{ color: "#f87171", maxWidth: 280 }}
+                    title={exception}>{exception.replace(/^.*?:\s*/, "")}</span>}
+                  {failedTime && <span style={{ color: "#64748b", marginLeft: "auto", whiteSpace: "nowrap", fontSize: 10 }}>{failedTime}</span>}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-sm" style={{ color: "#6ee7b7", opacity: 0.7 }}>
+            {dlqData ? "DLQ is empty" : "Loading..."}
+          </div>
+        )}
       </div>
 
       {/* Details Grid */}

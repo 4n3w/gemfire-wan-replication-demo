@@ -10,15 +10,34 @@
                   remote-distributed-system-id="2"
                   parallel="false"
                   enable-persistence="true"
-                  disk-store-name="wan-queue-store"/>
+                  disk-store-name="wan-queue-store"
+                  maximum-queue-memory="1"
+                  dispatcher-threads="1">
+      <gateway-event-failure-listener>
+          <class-name>org.apache.geode.cache.wan.RegionGatewayEventFailureListener</class-name>
+          <parameter name="regionName">
+              <string>GatewayFailedEvents</string>
+          </parameter>
+      </gateway-event-failure-listener>
+  </gateway-sender>
 
   <disk-store name="wan-queue-store"/>
+  <disk-store name="dlq-store"/>
 
   <pdx read-serialized="true"/>
 
   <region name="Orders">
     <region-attributes data-policy="replicate"
                        gateway-sender-ids="to-site-b"/>
+  </region>
+
+  <region name="GatewayFailedEvents">
+      <region-attributes data-policy="replicate"
+                         disk-store-name="dlq-store">
+          <eviction-attributes>
+              <lru-entry-count maximum="1000" action="overflow-to-disk"/>
+          </eviction-attributes>
+      </region-attributes>
   </region>
 
 </cache>

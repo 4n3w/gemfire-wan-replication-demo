@@ -8,12 +8,27 @@
 
   <gateway-receiver start-port="5000"
                     end-port="5000"
-                    hostname-for-senders="toxiproxy"/>
+                    hostname-for-senders="toxiproxy"
+                    event-retry-attempts="3"
+                    event-retry-interval="500"/>
+
+  <disk-store name="site-b-store"/>
 
   <pdx read-serialized="true"/>
 
   <region name="Orders">
-    <region-attributes data-policy="replicate"/>
+    <region-attributes data-policy="persistent-replicate"
+                       disk-store-name="site-b-store">
+      <cache-writer>
+        <class-name>PoisonPillCacheWriter</class-name>
+      </cache-writer>
+    </region-attributes>
   </region>
+
+  <function-service>
+    <function>
+      <class-name>TogglePoisonPillFunction</class-name>
+    </function>
+  </function-service>
 
 </cache>

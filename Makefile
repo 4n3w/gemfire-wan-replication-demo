@@ -142,6 +142,19 @@ open-controls: ## Open the control app in a browser
 open-prometheus: ## Open the Prometheus UI in a browser
 	@$(OPEN_CMD) http://localhost:9090
 
+# ── Database ─────────────────────────────────────────────────────
+
+.PHONY: wipe-db
+wipe-db: ## Remove persistent data directories
+	@rm -rf data/site-a data/site-b
+	@echo "Wiped data/site-a and data/site-b"
+
+.PHONY: fresh
+fresh: ## Full reset: stop containers, wipe data, restart
+	@docker compose down --remove-orphans
+	@$(MAKE) wipe-db
+	@docker compose up -d --remove-orphans
+
 # ── Help ─────────────────────────────────────────────────────────
 
 .DEFAULT_GOAL := help
