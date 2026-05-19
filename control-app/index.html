@@ -232,7 +232,7 @@ function StatusBadge({ status }) {
 
 /* ── Control Button ────────────────────────────────────── */
 
-function Btn({ onClick, disabled, color, children }) {
+function Btn({ onClick, disabled, color, active, children }) {
   var bg = color === "red" ? "#dc2626"
     : color === "green" ? "#16a34a"
     : color === "yellow" ? "#ca8a04"
@@ -243,12 +243,13 @@ function Btn({ onClick, disabled, color, children }) {
     : color === "yellow" ? "#a16207"
     : color === "orange" ? "#c2410c"
     : "#1d4ed8";
+  var ring = active ? "0 0 0 2px #0f172a, 0 0 0 4px rgba(255,255,255,0.7)" : "none";
 
   return (
     <button onClick={onClick} disabled={disabled}
       className="text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition-all"
-      style={{ background: bg, opacity: disabled ? 0.3 : 1,
-               cursor: disabled ? "not-allowed" : "pointer" }}
+      style={{ background: bg, opacity: disabled ? 0.3 : active ? 1 : 0.7,
+               cursor: disabled ? "not-allowed" : "pointer", boxShadow: ring }}
       onMouseOver={function(e) { if (!disabled) e.currentTarget.style.background = hoverBg; }}
       onMouseOut={function(e) { e.currentTarget.style.background = bg; }}>
       {children}
@@ -503,6 +504,18 @@ function App() {
     toxicDetail = parts.join(" + ");
   }
 
+  /* Derive active impairment values from first proxy's toxics */
+  var activeLatency = 0;
+  var activeBandwidth = 0;
+  allToxics.forEach(function(t) {
+    if (t.type === "latency" && t.attributes && t.attributes.latency) activeLatency = t.attributes.latency;
+    if (t.type === "bandwidth" && t.attributes && t.attributes.rate) activeBandwidth = t.attributes.rate;
+  });
+
+  /* Current rate for each generator */
+  var rateA = genStatus ? genStatus.rateMs : 0;
+  var rateB = genStatusB ? genStatusB.rateMs : 0;
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 text-slate-200">
 
@@ -567,17 +580,17 @@ function App() {
             <div className="text-xs mb-2" style={{ color: "#475569" }}>Network Impairments</div>
             <div className="flex gap-2 flex-wrap items-center">
               <span className="text-xs" style={{ color: "#64748b" }}>Latency:</span>
-              <Btn onClick={function() { addLatencyAction(2000); }} disabled={busy} color="yellow">2s</Btn>
-              <Btn onClick={function() { addLatencyAction(5000); }} disabled={busy} color="yellow">5s</Btn>
-              <Btn onClick={function() { addLatencyAction(10000); }} disabled={busy} color="yellow">10s</Btn>
-              <Btn onClick={function() { addLatencyAction(30000); }} disabled={busy} color="yellow">30s</Btn>
-              <Btn onClick={removeLatencyAction} disabled={busy} color="blue">Remove</Btn>
+              <Btn onClick={function() { addLatencyAction(2000); }} disabled={busy} color="yellow" active={activeLatency === 2000}>2s</Btn>
+              <Btn onClick={function() { addLatencyAction(5000); }} disabled={busy} color="yellow" active={activeLatency === 5000}>5s</Btn>
+              <Btn onClick={function() { addLatencyAction(10000); }} disabled={busy} color="yellow" active={activeLatency === 10000}>10s</Btn>
+              <Btn onClick={function() { addLatencyAction(30000); }} disabled={busy} color="yellow" active={activeLatency === 30000}>30s</Btn>
+              <Btn onClick={removeLatencyAction} disabled={busy || activeLatency === 0} color="blue">Remove</Btn>
               <span style={{ width: 1, height: 28, background: "rgba(51,65,85,0.6)", margin: "0 4px" }} />
               <span className="text-xs" style={{ color: "#64748b" }}>Throttle:</span>
-              <Btn onClick={function() { addBandwidthAction(100); }} disabled={busy} color="orange">100 KB/s</Btn>
-              <Btn onClick={function() { addBandwidthAction(10); }} disabled={busy} color="orange">10 KB/s</Btn>
-              <Btn onClick={function() { addBandwidthAction(1); }} disabled={busy} color="orange">1 KB/s</Btn>
-              <Btn onClick={removeBandwidthAction} disabled={busy} color="blue">Remove</Btn>
+              <Btn onClick={function() { addBandwidthAction(100); }} disabled={busy} color="orange" active={activeBandwidth === 100}>100 KB/s</Btn>
+              <Btn onClick={function() { addBandwidthAction(10); }} disabled={busy} color="orange" active={activeBandwidth === 10}>10 KB/s</Btn>
+              <Btn onClick={function() { addBandwidthAction(1); }} disabled={busy} color="orange" active={activeBandwidth === 1}>1 KB/s</Btn>
+              <Btn onClick={removeBandwidthAction} disabled={busy || activeBandwidth === 0} color="blue">Remove</Btn>
             </div>
           </div>
         </div>
@@ -614,10 +627,10 @@ function App() {
           </div>
           <div className="flex gap-2 flex-wrap items-center mt-2">
             <span className="text-xs" style={{ color: "#64748b" }}>Rate:</span>
-            <Btn onClick={function() { setGenRate(1000); }} color="blue">1/sec</Btn>
-            <Btn onClick={function() { setGenRate(200); }} color="blue">5/sec</Btn>
-            <Btn onClick={function() { setGenRate(100); }} color="blue">10/sec</Btn>
-            <Btn onClick={function() { setGenRate(50); }} color="blue">20/sec</Btn>
+            <Btn onClick={function() { setGenRate(1000); }} color="blue" active={rateA === 1000}>1/sec</Btn>
+            <Btn onClick={function() { setGenRate(200); }} color="blue" active={rateA === 200}>5/sec</Btn>
+            <Btn onClick={function() { setGenRate(100); }} color="blue" active={rateA === 100}>10/sec</Btn>
+            <Btn onClick={function() { setGenRate(50); }} color="blue" active={rateA === 50}>20/sec</Btn>
           </div>
         </div>
 
@@ -650,10 +663,10 @@ function App() {
           </div>
           <div className="flex gap-2 flex-wrap items-center mt-2">
             <span className="text-xs" style={{ color: "#64748b" }}>Rate:</span>
-            <Btn onClick={function() { setGenRateB(1000); }} color="blue">1/sec</Btn>
-            <Btn onClick={function() { setGenRateB(200); }} color="blue">5/sec</Btn>
-            <Btn onClick={function() { setGenRateB(100); }} color="blue">10/sec</Btn>
-            <Btn onClick={function() { setGenRateB(50); }} color="blue">20/sec</Btn>
+            <Btn onClick={function() { setGenRateB(1000); }} color="blue" active={rateB === 1000}>1/sec</Btn>
+            <Btn onClick={function() { setGenRateB(200); }} color="blue" active={rateB === 200}>5/sec</Btn>
+            <Btn onClick={function() { setGenRateB(100); }} color="blue" active={rateB === 100}>10/sec</Btn>
+            <Btn onClick={function() { setGenRateB(50); }} color="blue" active={rateB === 50}>20/sec</Btn>
           </div>
         </div>
       </div>
