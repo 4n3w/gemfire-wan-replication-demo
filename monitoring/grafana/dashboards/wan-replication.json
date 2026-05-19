@@ -214,12 +214,12 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "clamp_min(gemfire_cache_entries{site=\"site-a\", region=\"Orders\"} - on(region) gemfire_cache_entries{site=\"site-b\", region=\"Orders\"}, 0)",
-              "legendFormat": "Lag",
+              "expr": "abs(gemfire_cache_entries{site=\"site-a\", region=\"Orders\"} - on(region) gemfire_cache_entries{site=\"site-b\", region=\"Orders\"})",
+              "legendFormat": "Drift",
               "refId": "A"
             }
           ],
-          "title": "Replication Lag (A - B)",
+          "title": "Entry Count Drift",
           "type": "stat"
         },
         {
@@ -501,8 +501,17 @@
             "uid": "prometheus"
           },
           "expr": "gemfire_eventQueueSize{site=\"site-a\", category=\"GatewaySenderStatistics\"}",
-          "legendFormat": "Queue Size",
+          "legendFormat": "A→B Queue Size",
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "gemfire_eventQueueSize{site=\"site-b\", category=\"GatewaySenderStatistics\"}",
+          "legendFormat": "B→A Queue Size",
+          "refId": "B"
         }
       ],
       "title": "Gateway Sender Queue Size",
@@ -609,7 +618,7 @@
             "uid": "prometheus"
           },
           "expr": "gemfire_eventsQueued{site=\"site-a\", category=\"GatewaySenderStatistics\"}",
-          "legendFormat": "Events Queued",
+          "legendFormat": "Events Queued (A→B)",
           "refId": "A"
         },
         {
@@ -618,11 +627,29 @@
             "uid": "prometheus"
           },
           "expr": "gemfire_batchesDistributed{site=\"site-a\", category=\"GatewaySenderStatistics\"}",
-          "legendFormat": "Batches Distributed",
+          "legendFormat": "Batches Distributed (A→B)",
           "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "gemfire_eventsQueued{site=\"site-b\", category=\"GatewaySenderStatistics\"}",
+          "legendFormat": "Events Queued (B→A)",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "gemfire_batchesDistributed{site=\"site-b\", category=\"GatewaySenderStatistics\"}",
+          "legendFormat": "Batches Distributed (B→A)",
+          "refId": "D"
         }
       ],
-      "title": "Events Queued (Sender)",
+      "title": "Events Queued (Both Senders)",
       "type": "timeseries"
     },
     {
@@ -713,11 +740,20 @@
             "uid": "prometheus"
           },
           "expr": "gemfire_processBatchRequests{site=\"site-b\"}",
-          "legendFormat": "Batch Requests",
+          "legendFormat": "Batch Requests (A→B)",
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "gemfire_processBatchRequests{site=\"site-a\"}",
+          "legendFormat": "Batch Requests (B→A)",
+          "refId": "B"
         }
       ],
-      "title": "Batch Processing (Receiver)",
+      "title": "Batch Processing (Both Receivers)",
       "type": "timeseries"
     },
     {
@@ -824,7 +860,7 @@
             "uid": "prometheus"
           },
           "expr": "rate(gemfire_eventsQueued{site=\"site-a\", category=\"GatewaySenderStatistics\"}[30s])",
-          "legendFormat": "Events Queued/s (Sender)",
+          "legendFormat": "Events Queued/s (A→B)",
           "refId": "A"
         },
         {
@@ -833,7 +869,7 @@
             "uid": "prometheus"
           },
           "expr": "rate(gemfire_batchesDistributed{site=\"site-a\", category=\"GatewaySenderStatistics\"}[30s])",
-          "legendFormat": "Batches Distributed/s (Sender)",
+          "legendFormat": "Batches Distributed/s (A→B)",
           "refId": "B"
         },
         {
@@ -842,8 +878,35 @@
             "uid": "prometheus"
           },
           "expr": "rate(gemfire_processBatchRequests{site=\"site-b\", category=\"GatewayReceiverStatistics\"}[30s])",
-          "legendFormat": "Batches Received/s (Receiver)",
+          "legendFormat": "Batches Received/s (A→B)",
           "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(gemfire_eventsQueued{site=\"site-b\", category=\"GatewaySenderStatistics\"}[30s])",
+          "legendFormat": "Events Queued/s (B→A)",
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(gemfire_batchesDistributed{site=\"site-b\", category=\"GatewaySenderStatistics\"}[30s])",
+          "legendFormat": "Batches Distributed/s (B→A)",
+          "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(gemfire_processBatchRequests{site=\"site-a\", category=\"GatewayReceiverStatistics\"}[30s])",
+          "legendFormat": "Batches Received/s (B→A)",
+          "refId": "F"
         }
       ],
       "title": "Replication Throughput (per sec)",
@@ -944,7 +1007,7 @@
             "uid": "prometheus"
           },
           "expr": "rate(gemfire_batchDistributionTime{site=\"site-a\", category=\"GatewaySenderStatistics\"}[30s]) / rate(gemfire_batchesDistributed{site=\"site-a\", category=\"GatewaySenderStatistics\"}[30s])",
-          "legendFormat": "Avg Time per Batch",
+          "legendFormat": "Avg Time per Batch (A→B)",
           "refId": "A"
         },
         {
@@ -953,8 +1016,26 @@
             "uid": "prometheus"
           },
           "expr": "rate(gemfire_gatewayBatchTime{site=\"site-a\", category=\"ClientStats\"}[30s]) / rate(gemfire_gatewayBatchs{site=\"site-a\", category=\"ClientStats\"}[30s])",
-          "legendFormat": "Avg Batch Round-Trip",
+          "legendFormat": "Avg Batch Round-Trip (A→B)",
           "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(gemfire_batchDistributionTime{site=\"site-b\", category=\"GatewaySenderStatistics\"}[30s]) / rate(gemfire_batchesDistributed{site=\"site-b\", category=\"GatewaySenderStatistics\"}[30s])",
+          "legendFormat": "Avg Time per Batch (B→A)",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(gemfire_gatewayBatchTime{site=\"site-b\", category=\"ClientStats\"}[30s]) / rate(gemfire_gatewayBatchs{site=\"site-b\", category=\"ClientStats\"}[30s])",
+          "legendFormat": "Avg Batch Round-Trip (B→A)",
+          "refId": "D"
         }
       ],
       "title": "Batch Distribution Time",
@@ -965,7 +1046,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Difference between Site A and Site B entry counts. Brief negative values are normal — caused by Prometheus scraping the two sites at slightly different times.",
+      "description": "Absolute difference between Site A and Site B entry counts. With bi-directional replication, both sites generate data so this measures convergence drift. Small transient values are normal due to replication delay and Prometheus scrape timing.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1055,12 +1136,12 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "clamp_min(gemfire_cache_entries{site=\"site-a\", region=\"Orders\"} - on(region) gemfire_cache_entries{site=\"site-b\", region=\"Orders\"}, 0)",
-          "legendFormat": "Entry Count Lag (A - B)",
+          "expr": "abs(gemfire_cache_entries{site=\"site-a\", region=\"Orders\"} - on(region) gemfire_cache_entries{site=\"site-b\", region=\"Orders\"})",
+          "legendFormat": "Entry Count Difference |A - B|",
           "refId": "A"
         }
       ],
-      "title": "Replication Lag Over Time",
+      "title": "Entry Count Drift Over Time",
       "type": "timeseries"
     },
     {
@@ -1155,9 +1236,20 @@
           },
           "editorMode": "code",
           "expr": "rate(gemfire_eventsQueued{site=\"site-a\", category=\"GatewaySenderStatistics\"}[30s]) / rate(gemfire_batchesDistributed{site=\"site-a\", category=\"GatewaySenderStatistics\"}[30s])",
-          "legendFormat": "Events per Batch (Sender)",
+          "legendFormat": "Events per Batch (A→B)",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "rate(gemfire_eventsQueued{site=\"site-b\", category=\"GatewaySenderStatistics\"}[30s]) / rate(gemfire_batchesDistributed{site=\"site-b\", category=\"GatewaySenderStatistics\"}[30s])",
+          "legendFormat": "Events per Batch (B→A)",
+          "range": true,
+          "refId": "B"
         }
       ],
       "title": "Events per Batch",
@@ -1262,7 +1354,7 @@
         {
           "editorMode": "code",
           "expr": "sum(rate(gemfire_receivedBytes{site=\"site-b\",category=\"GatewayReceiverStatistics\"}[$__rate_interval]))",
-          "legendFormat": "Received bytes {{member}}",
+          "legendFormat": "Received bytes (Site B ← A)",
           "range": true,
           "refId": "A"
         },
@@ -1275,9 +1367,33 @@
           "expr": "sum(rate(gemfire_sentBytes{site=\"site-b\",category=\"GatewayReceiverStatistics\"}[$__rate_interval]))",
           "hide": false,
           "instant": false,
-          "legendFormat": "Sent bytes {{member}}",
+          "legendFormat": "Sent bytes (Site B → A)",
           "range": true,
           "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(gemfire_receivedBytes{site=\"site-a\",category=\"GatewayReceiverStatistics\"}[$__rate_interval]))",
+          "legendFormat": "Received bytes (Site A ← B)",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(gemfire_sentBytes{site=\"site-a\",category=\"GatewayReceiverStatistics\"}[$__rate_interval]))",
+          "hide": false,
+          "instant": false,
+          "legendFormat": "Sent bytes (Site A → B)",
+          "range": true,
+          "refId": "D"
         }
       ],
       "title": "WAN Receiver Throughput",

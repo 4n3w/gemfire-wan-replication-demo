@@ -6,19 +6,29 @@
         http://geode.apache.org/schema/cache/cache-1.0.xsd"
     version="1.0">
 
+  <gateway-sender id="to-site-a"
+                  remote-distributed-system-id="1"
+                  parallel="false"
+                  enable-persistence="true"
+                  disk-store-name="wan-queue-store"
+                  maximum-queue-memory="1"
+                  dispatcher-threads="1"/>
+
   <gateway-receiver start-port="5000"
                     end-port="5000"
                     hostname-for-senders="toxiproxy"
                     event-retry-attempts="3"
                     event-retry-interval="500"/>
 
+  <disk-store name="wan-queue-store"/>
   <disk-store name="site-b-store"/>
 
   <pdx read-serialized="true"/>
 
   <region name="Orders">
     <region-attributes data-policy="persistent-replicate"
-                       disk-store-name="site-b-store">
+                       disk-store-name="site-b-store"
+                       gateway-sender-ids="to-site-a">
       <cache-writer>
         <class-name>PoisonPillCacheWriter</class-name>
       </cache-writer>

@@ -10,5 +10,17 @@
     "listen": "0.0.0.0:5000",
     "upstream": "site-b-server:5000",
     "enabled": true
+  },
+  {
+    "name": "wan_locator_reverse",
+    "listen": "0.0.0.0:10336",
+    "upstream": "site-a-locator:10336",
+    "enabled": true
+  },
+  {
+    "name": "wan_receiver_reverse",
+    "listen": "0.0.0.0:5001",
+    "upstream": "site-a-server:5001",
+    "enabled": true
   }
 ]

@@ -21,6 +21,10 @@
       </gateway-event-failure-listener>
   </gateway-sender>
 
+  <gateway-receiver start-port="5001"
+                    end-port="5001"
+                    hostname-for-senders="toxiproxy"/>
+
   <disk-store name="wan-queue-store"/>
   <disk-store name="dlq-store"/>
 

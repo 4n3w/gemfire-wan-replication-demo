@@ -12,9 +12,10 @@ services:
     entrypoint: ["bash", "/scripts/start-locator.sh"]
     environment:
       LOCATOR_NAME: site-a-locator
-      LOCATOR_PORT: "10335"
+      LOCATOR_PORT: "10336"
       SITE_ID: "1"
       REMOTE_LOCATORS: "toxiproxy[10335]"
+      HOSTNAME_FOR_CLIENTS: "toxiproxy"
     healthcheck:
       test: ["CMD-SHELL", "grep -q 'Locator started' /data/site-a-locator/site-a-locator.log"]
       interval: 5s
@@ -37,6 +38,7 @@ services:
       LOCATOR_PORT: "10335"
       SITE_ID: "2"
       HOSTNAME_FOR_CLIENTS: "toxiproxy"
+      REMOTE_LOCATORS: "toxiproxy[10336]"
     healthcheck:
       test: ["CMD-SHELL", "grep -q 'Locator started' /data/site-b-locator/site-b-locator.log"]
       interval: 5s
@@ -86,7 +88,7 @@ services:
     environment:
       SERVER_NAME: site-a-server
       LOCATOR_HOST: site-a-locator
-      LOCATOR_PORT: "10335"
+      LOCATOR_PORT: "10336"
       SITE_ID: "1"
       CACHE_XML: /config/cache.xml
       HTTP_PORT: "8080"
@@ -186,11 +188,32 @@ services:
     entrypoint: ["bash", "/scripts/data-generator.sh"]
     environment:
       LOCATOR_HOST: site-a-locator
-      LOCATOR_PORT: "10335"
+      LOCATOR_PORT: "10336"
       HTTP_PORT: "8888"
       AUTO_START: "true"
     depends_on:
       site-a-server:
+        condition: service_healthy
+
+  # ── Data Generator (Site B) ──────────────────────────────────
+  data-generator-b:
+    image: gemfire/gemfire:10.2.1-jdk17
+    container_name: data-generator-b
+    hostname: data-generator-b
+    networks:
+      - site-a-net
+      - site-b-net
+    volumes:
+      - ./scripts/data-generator.sh:/scripts/data-generator.sh:ro
+      - ./scripts/DataGenerator.java:/scripts/DataGenerator.java:ro
+    entrypoint: ["bash", "/scripts/data-generator.sh"]
+    environment:
+      LOCATOR_HOST: site-b-locator
+      LOCATOR_PORT: "10335"
+      HTTP_PORT: "8888"
+      AUTO_START: "true"
+    depends_on:
+      site-b-server:
         condition: service_healthy
 
   # ── Prometheus ──────────────────────────────────────────────────
